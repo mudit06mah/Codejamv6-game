@@ -338,6 +338,9 @@ class Player:
 # -------------------------
 class HelmaBoss:
     def __init__(self):
+        self.launcher_uses = 0
+        self.max_launcher_uses = 2
+
         self.vel = Vector2(0, 0)
         self.on_ground = True
 
@@ -362,7 +365,7 @@ class HelmaBoss:
         self.next_action_cooldown = 0.9 + random.random()*0.6
 
         # attack params
-        self.attacks = ["slash","dash_slash","shield_bash"]
+        self.attacks = ["slash", "dash_slash", "shield_bash", "launcher"]
         self.current_attack = None
         self.telegraph_time = 0.55
         self.active_time = 0.22
@@ -442,19 +445,23 @@ class HelmaBoss:
         # picking actions
         if self.state == "idle" and self.next_action_cooldown <= 0:
             r = random.random()
-            # if player is close, heavy slash is more likely
-            if dist < 160:
-                if r < 0.55:
-                    self.start_attack("slash")
-                elif r < 0.85:
-                    self.start_attack("shield_bash")
-                else:
-                    self.start_attack("dash_slash")
-            else:
+
+            can_launcher = (
+                self.launcher_uses < self.max_launcher_uses
+                and abs(player.pos.x - self.pos.x) < 120
+                and player.on_ground
+            )
+
+            if can_launcher and r < 0.25:
+                self.start_attack("launcher")
+            elif abs(player.pos.x - self.pos.x) < 160:
                 if r < 0.6:
-                    self.start_attack("dash_slash")
-                else:
                     self.start_attack("slash")
+                else:
+                    self.start_attack("shield_bash")
+            else:
+                self.start_attack("dash_slash")
+
 
         # update telegraph/active/recovery states
         if self.state == "telegraph":
@@ -535,6 +542,11 @@ class HelmaBoss:
         elif kind == "shield_bash":
             # shield bash: short windup, then short forward bash area
             self.attack_hitbox = None
+        elif kind == "launcher":
+            self.state = "telegraph"
+            self.state_timer = 0.35
+            self.current_attack = "launcher"
+            self.attack_hitbox = None
 
     def start_active(self):
         self.state = "active"
@@ -562,6 +574,15 @@ class HelmaBoss:
             else:
                 x = self.pos.x - 18 - w
             self.attack_hitbox = pygame.Rect(x, self.pos.y - 70, w, h)
+        elif self.current_attack == "launcher":
+            w, h = 48, 42
+            if self.attack_facing == 1:
+                x = self.pos.x + 24
+            else:
+                x = self.pos.x - 24 - w
+            y = self.pos.y - 64
+
+            self.attack_hitbox = pygame.Rect(x, y, w, h)
 
         # when attacking, temporarily close parry window (can't be deflected mid-swing except during explicit parry_window)
         # note: parry_window is only available during certain times and when shield_up is True
@@ -647,6 +668,10 @@ class HelmaBoss:
                 # draw small charge circle around shield
                 srect = self.shield_rect()
                 pygame.draw.circle(screen, color, (srect.centerx, srect.centery), 44, 3)
+            elif self.current_attack == "launcher":
+                color = ORANGE if self.state == "telegraph" else RED
+                center = (int(self.pos.x), int(self.pos.y - 90))
+                pygame.draw.circle(screen, color, center, 36, 3)
 
 # -------------------------
 # Game setup
@@ -740,19 +765,20 @@ while running:
 
     
     if (
-        player.launcher_state == "active"
-        and player.launcher_hitbox
-        and player.launcher_hitbox.colliderect(boss.hurtbox())
-        and not player.launcher_used
-        and boss.state not in ("stunned",)
+        boss.current_attack == "launcher"
+        and boss.state == "active"
+        and boss.attack_hitbox
+        and boss.attack_hitbox.colliderect(player.hurtbox())
+        and player.hit_recovery_timer <= 0
     ):
-        boss.hp -= 1
-        boss.vel.y = -420
-        boss.on_ground = False
-        boss.pos.x += 20 * player.facing
-        boss.state = "recovery"
-        boss.state_timer = 0.35
-        player.launcher_used = True
+        player.vel.y = -480
+        player.vel.x = 160 * boss.attack_facing
+        player.on_ground = False
+        player.hit_recovery_timer = 0.8
+
+        boss.launcher_uses += 1
+        player.hp -= 2   # only if used very rarely
+        boss.end_attack()
 
 
 
