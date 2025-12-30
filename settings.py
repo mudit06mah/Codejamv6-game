@@ -3,7 +3,10 @@ import pygame
 # Screen
 WIDTH, HEIGHT = 960, 540
 FPS = 60
-GROUND_Y = 440
+
+# CHANGED: Increased GROUND_Y so characters stand lower (closer to bottom)
+# Screen height is 540, so 515 leaves a small 25px margin.
+GROUND_Y = 515 
 
 # Colors
 WHITE = (240, 240, 240)
@@ -17,26 +20,20 @@ PURPLE = (160, 80, 200)
 DARK_GREY = (40, 40, 40)
 CRIMSON = (120, 0, 0)
 
-
-
-# Fonts
-# Using a system monospace font for that "hollow" feeling
-FONT_MONO = "courier new" # or "consolas", "lucida console"
-
 # Game State Keys
 STATE_MENU = "menu"
-STATE_CUTSCENE = "cutscene"    # NEW
-STATE_DIALOGUE = "dialogue"    # NEW
+STATE_CUTSCENE = "cutscene"
+STATE_DIALOGUE = "dialogue"
 STATE_GAME_PAPIA = "papia_fight"
+STATE_TRANSITION = "transition"
 STATE_GAME_HARUS = "harus_fight"
 STATE_ENDING = "ending"
 STATE_GAMEOVER = "gameover"
 
-def load_strip(path, frame_count, frame_w=64, frame_h=64):
+def load_strip(path, frame_count, frame_w=None, frame_h=None):
     try:
         sheet = pygame.image.load(path).convert_alpha()
         frames = []
-        # If frame_w is None, calculate it based on total width
         if frame_w is None:
             frame_w = sheet.get_width() // frame_count
             frame_h = sheet.get_height()
@@ -47,7 +44,6 @@ def load_strip(path, frame_count, frame_w=64, frame_h=64):
         return frames
     except Exception as e:
         print(f"ERROR loading {path}: {e}")
-        # Return fallback surface
         s = pygame.Surface((frame_w or 64, frame_h or 64))
         s.fill((255, 0, 255))
         return [s]
