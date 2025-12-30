@@ -1,16 +1,16 @@
 # Vanitas
 
-**Vanitas** is a 2D side-scrolling action game built with **Python and Pygame**, centered around revenge, loss, and the cost of obsession.
+**Vanitas** is a 2D action game built with **Python(Pygame)**, centered around revenge, loss, and the cost of obsession.
 
 The game tells a simple but heavy story:  
 in the pursuit of vengeance, you slowly erase the very person you loved.
 
 ---
 
-## 🕯 Story & Themes
+## Story & Themes
 
 We were happily married.  
-Then someone murdered my wife.
+Then they took her away from me.
 
 I chase the killer, driven by rage and grief. But I am not strong enough.  
 To move forward, I must let go.
@@ -27,11 +27,9 @@ I succeed.
 
 But I cannot remember who I did it for.
 
-In the end, revenge costs more than it gives.
-
 ---
 
-## 🎮 Gameplay Overview
+## Gameplay Overview
 
 - Single-player 2D side-view action game
 - Heavy focus on **boss encounters**
@@ -41,7 +39,7 @@ In the end, revenge costs more than it gives.
 
 ---
 
-## 🕹 Controls
+## Controls
 
 | Action | Key |
 |------|----|
@@ -54,25 +52,9 @@ In the end, revenge costs more than it gives.
 
 ---
 
-## 🎥 Gameplay Preview
+## Gameplay Preview
 
 https://drive.google.com/file/d/1HASuVZ-mL2vsHd027esL-EG_skmPEPNN/view
-
----
-
-## 🧠 Core Mechanics
-
-### Memory Sacrifice System
-Progression requires letting go of personal memories.  
-Each memory lost weakens the protagonist emotionally but strengthens them mechanically.
-
-### Boss-Focused Combat
-Each boss represents a different challenge:
-- **Papia** – A ranged, pattern-based boss that tests positioning and awareness
-- **Harus** – A melee-focused boss that tests timing, discipline, and counterplay
-
-### Visual Telegraphing
-All major attacks are clearly telegraphed using animation, effects, and screen shake to ensure fairness.
 
 ---
 
@@ -86,6 +68,7 @@ All major attacks are clearly telegraphed using animation, effects, and screen s
 ├── story.py       # Cutscenes and dialogue systems
 ├── settings.py    # Constants, colors, game states, helpers
 ├── assets/        # Sprites, sound effects, UI elements
+├── prototypes/    # Older prototypes for boss mechanics
 ```
 
 ---
@@ -111,8 +94,6 @@ python main.py
 
 ---
 
-## 🎨 Assets & Audio
-
+##  Assets & Audio
+All sprites were drawn by hand
 All visual and audio assets are stored in the assets/ directory
-
-Fallback placeholders are used if assets fail to load
