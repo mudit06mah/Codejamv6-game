@@ -56,10 +56,7 @@ In the end, revenge costs more than it gives.
 
 ## 🎥 Gameplay Preview
 
-<iframe src="https://drive.google.com/file/d/1HASuVZ-mL2vsHd027esL-EG_skmPEPNN/preview">
-</iframe>
-
-> If the video does not load, [watch it here on Google Drive](https://drive.google.com/file/d/1HASuVZ-mL2vsHd027esL-EG_skmPEPNN/view).
+https://drive.google.com/file/d/1HASuVZ-mL2vsHd027esL-EG_skmPEPNN/view
 
 ---
 
@@ -89,3 +86,33 @@ All major attacks are clearly telegraphed using animation, effects, and screen s
 ├── story.py       # Cutscenes and dialogue systems
 ├── settings.py    # Constants, colors, game states, helpers
 ├── assets/        # Sprites, sound effects, UI elements
+```
+
+---
+
+## ▶️ How to Run
+
+Requirements
+
+- Python 3.9+
+- Pygame
+
+Install dependencies
+
+```bash
+pip install pygame
+```
+
+Run the game
+
+```bash
+python main.py
+```
+
+---
+
+## 🎨 Assets & Audio
+
+All visual and audio assets are stored in the assets/ directory
+
+Fallback placeholders are used if assets fail to load
