@@ -2,12 +2,16 @@ import pygame, math, random
 from pygame.math import Vector2
 
 def load_strip(path, frame_count, frame_w=64, frame_h=64):
-    sheet = pygame.image.load(path).convert_alpha()
-    frames = []
-    for i in range(frame_count):
-        frame = sheet.subsurface((i*frame_w, 0, frame_w, frame_h))
-        frames.append(frame)
-    return frames
+    try:
+        sheet = pygame.image.load(path).convert_alpha()
+        frames = []
+        for i in range(frame_count):
+            frame = sheet.subsurface((i*frame_w, 0, frame_w, frame_h))
+            frames.append(frame)
+        return frames
+    except FileNotFoundError:
+        print(f"Could not load sprite strip: {path}")
+        return []
 
 
 pygame.init()
@@ -30,6 +34,9 @@ ORANGE = (200,140,60)
 GRAY = (90,90,90)
 BLACK = (10,10,10)
 GREEN = (80,200,120)
+
+# Load Shockwave Frames Globally (User added: assets/effects/shockwave.png)
+SHOCKWAVE_FRAMES = load_strip("assets/effects/shockwave.png", 3, 256, 256)
 
 # -------------------------------------
 # Helpers
@@ -202,8 +209,8 @@ class Player:
                 # active window where damage can be applied; keep small but precise
                 self.attack_timer = 0.12
                 # create attack hitbox in front of player with reduced offset for precision
-                offset = 48 * self.facing  # reduced reach so parry is harder
-                w, h = 56, 24  # reduced size
+                offset = 30 * self.facing 
+                w, h = 40, 20
                 x = self.pos.x + offset if self.facing == 1 else self.pos.x + offset - w
                 self.attack_hitbox = pygame.Rect(x, self.pos.y - 60, w, h)
                 self.attack_damage_applied = False
@@ -211,7 +218,7 @@ class Player:
             # follow player position during active window
             if self.attack_hitbox:
                 w = self.attack_hitbox.width
-                offset = 48 * self.facing
+                offset = 30 * self.facing
                 x = self.pos.x + offset if self.facing == 1 else self.pos.x + offset - w
                 self.attack_hitbox.x = x
             self.attack_timer -= dt
@@ -283,14 +290,43 @@ class Shockwave:
         self.rect = pygame.Rect(x, y-40, 80, 60)
         self.speed = 380 * direction
         self.active = True
+        
+        # Animation
+        self.frames = SHOCKWAVE_FRAMES
+        self.frame_idx = 0.0
+        self.anim_speed = 10.0 # frames per second
+        self.direction = direction
 
     def update(self, dt):
         self.rect.x += self.speed * dt
         if self.rect.right < 0 or self.rect.left > WIDTH:
             self.active = False
+            
+        # Update animation
+        if self.frames:
+            self.frame_idx += self.anim_speed * dt
+            if self.frame_idx >= len(self.frames):
+                self.frame_idx = 0.0
 
     def draw(self):
-        pygame.draw.rect(screen, RED, self.rect, 2)
+        # Draw frame if available, else draw debug rect
+        if self.frames:
+            frame = self.frames[int(self.frame_idx) % len(self.frames)]
+            
+            # Flip if direction is left (-1)
+            if self.direction == -1:
+                frame = pygame.transform.flip(frame, True, False)
+                
+            # Scale up
+            SCALE = 0.8
+            frame = pygame.transform.scale(frame, (int(frame.get_width()*SCALE), int(frame.get_height()*SCALE)))
+            
+            # Draw centered at bottom of rect
+            dx = self.rect.centerx - frame.get_width() // 2
+            dy = self.rect.bottom - frame.get_height()
+            screen.blit(frame, (dx, dy))
+        else:
+            pygame.draw.rect(screen, RED, self.rect, 2)
 
 # -------------------------------------
 # Boss
@@ -323,7 +359,7 @@ class AxeBoss:
         self.swing_reach = 160
         self.swing_tip_radius = 28
         self.swing_telegraph_time = 0.7
-        self.swing_active_time = 0.25
+        self.swing_active_time = 0.35 # Increased for easier parry (was 0.25)
         # track whether shockwave spawned on ground contact
         self._shockwave_spawned = False
 
@@ -372,7 +408,7 @@ class AxeBoss:
     def update_animation(self, dt, player):
         # Decide animation state from AI state
         if self.state == "telegraph":
-            state = "spin" if self.attack_type == "spin" else "windup"
+            state = "windup"
         elif self.state == "active":
             state = "spin" if self.attack_type == "spin" else "attack"
         elif self.state in ("recovery", "stunned"):
@@ -403,8 +439,8 @@ class AxeBoss:
 
     def update(self, dt, player):
         dist = abs(player.pos.x - self.pos.x)
-        # only update facing when not mid-attack (so attack direction is locked)
-        if self.state in ("idle", "recovery"):
+        # only update facing when IDLE (lock it during attack AND recovery)
+        if self.state == "idle":
             self.facing = 1 if player.pos.x > self.pos.x else -1
 
         # stunned
@@ -461,6 +497,8 @@ class AxeBoss:
                 self.state = "parry"
                 # short parry window right before active
                 self.timer = 0.12
+                self.parry_window = False
+                
                 # lock facing for the attack
                 self.attack_facing = self.facing
                 # reset shockwave spawn flag
@@ -475,16 +513,19 @@ class AxeBoss:
 
             tip = self.axe_tip_pos()
 
-            if self.prev_tip_y is not None:
-                crossed_ground = (
-                    self.prev_tip_y < GROUND_Y - 6 and
-                    tip.y >= GROUND_Y - 6
-                )
-                if crossed_ground and not self._shockwave_spawned:
-                        self.spawn_shockwave()
-                        self._shockwave_spawned = True
+            # Fix: Only do shockwave logic if attack_type is SWING.
+            # Spin uses a rectangle hitbox and shouldn't cause this effect.
+            if self.attack_type == "swing":
+                if self.prev_tip_y is not None:
+                    crossed_ground = (
+                        self.prev_tip_y < GROUND_Y - 6 and
+                        tip.y >= GROUND_Y - 6
+                    )
+                    if crossed_ground and not self._shockwave_spawned:
+                            self.spawn_shockwave()
+                            self._shockwave_spawned = True
+                self.prev_tip_y = tip.y
 
-            self.prev_tip_y = tip.y
             # in active we complete the arc and apply damage if tip touches the player
             # we will finish the rotation with an ease-out so motion slows after impact
             self.timer -= dt
@@ -531,7 +572,7 @@ class AxeBoss:
         self.state = "telegraph"
         self.attack_type = "swing"
         self.swing_telegraph_time = 0.7
-        self.swing_active_time = 0.25
+        self.swing_active_time = 0.35 # Slightly increased window
         self.timer = self.swing_telegraph_time
         # more extreme angles to ensure arc travels from back/top to down
         self.swing_reach = 160
@@ -576,7 +617,8 @@ class AxeBoss:
         self.state = "active"
         self.timer = self.swing_active_time if self.attack_type == "swing" else self.sw_spin_active_time
         self.attack_active = True
-        self.parry_window = False
+        # Enable parry window here (during the active swing frames)
+        self.parry_window = True
 
         # IMPORTANT: reset rotation to exact windup end
         if self.attack_type == "swing":
@@ -588,6 +630,7 @@ class AxeBoss:
         self.timer = 1.0
         self.attack_active = False
         self.attack_hitbox = None
+        self.parry_window = False
 
     def on_parried(self):
         # when parried, become stunned briefly then go to recovery
@@ -650,7 +693,9 @@ class AxeBoss:
         # draw rectangular hitbox for spin if present
         if self.attack_hitbox and self.attack_type == "spin":
             draw_color = ORANGE if self.parry_window else RED if self.attack_active else WHITE
-            pygame.draw.rect(screen, draw_color, self.attack_hitbox, 2)
+            # Removed the rectangle drawing if that was the "spinning rectangle" you wanted disabled.
+            # If you want it back for debug, uncomment the next line:
+            # pygame.draw.rect(screen, draw_color, self.attack_hitbox, 2)
 
         for s in self.shockwaves:
             s.draw()
