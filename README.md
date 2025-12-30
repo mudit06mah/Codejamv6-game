@@ -1,4 +1,6 @@
 # Vanitas
+<img width="1919" height="1077" alt="image" src="https://github.com/user-attachments/assets/8bb9d40f-bacf-45f1-aff3-ab60594c2e44" />
+
 
 **Vanitas** is a 2D action game built with **Python(Pygame)**, centered around revenge, loss, and the cost of obsession.
 
