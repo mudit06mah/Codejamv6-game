@@ -27,6 +27,7 @@ player = Player()
 boss = None
 memory_opacity = 255 
 checkpoint_reached = False 
+DEPTH_BIAS = 100  # boss visual width compensation
 
 # Screen Shake
 shake_timer = 0.0
@@ -219,7 +220,15 @@ while running:
         pygame.draw.rect(screen, (30, 30, 40), bg_rect_sky) 
         pygame.draw.rect(screen, (20, 20, 20), bg_rect_gnd)
         player.draw(screen, offset)
-        if boss: boss.draw(screen, offset)
+        if boss:
+            if player.pos.x + DEPTH_BIAS < boss.pos.x:
+                player.draw(screen, offset)
+                boss.draw(screen, offset)
+            else:
+                boss.draw(screen, offset)
+                player.draw(screen, offset)
+        else:
+            player.draw(screen, offset)
         if boss: draw_ui(screen, player, "PAPIA", boss.hp, boss.max_hp)
         
     elif current_state == STATE_TRANSITION:
@@ -232,8 +241,16 @@ while running:
         pygame.draw.rect(screen, (40, 0, 0), bg_rect_sky) 
         pygame.draw.rect(screen, (20, 20, 20), bg_rect_gnd)
         player.draw(screen, offset)
-        if boss: boss.draw(screen, offset)
-        if boss: draw_ui(screen, player, "HARUS (KILLER)", boss.hp, boss.max_hp)
+        if boss:
+            if player.pos.x + DEPTH_BIAS < boss.pos.x:
+                player.draw(screen, offset)
+                boss.draw(screen, offset)
+            else:
+                boss.draw(screen, offset)
+                player.draw(screen, offset)
+        else:
+            player.draw(screen, offset)
+        if boss: draw_ui(screen, player, "PAPIA", boss.hp, boss.max_hp)
 
     elif current_state == STATE_ENDING:
         memory_opacity = 0
