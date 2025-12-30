@@ -32,6 +32,8 @@ SILVER = (180,180,190)
 DARK_METAL = (80,80,90)
 MAGIC = (140, 90, 200)
 
+BOSS_SCALE = 0.75
+
 def rect_point_distance(rect: pygame.Rect, point: Vector2) -> float:
     dx = 0
     if point.x < rect.left:
@@ -72,10 +74,17 @@ class Player:
         self.dash_cooldown = 0.0
         self.dash_timer = 0.0
         self.is_dashing = False
-        self.dash_speed = 700.0
-        self.dash_time = 0.14
-        self.dash_cooldown_time = 0.6
+        self.dash_speed = 740.0
+        self.dash_time = 0.20
+        self.dash_cooldown_time = 0.65
         self.invulnerable_during_dash = True
+
+        # Launcher
+        self.launcher_state = "ready"   # ready, windup, active, recovery
+        self.launcher_timer = 0
+        self.launcher_hitbox = None
+        self.launcher_used = False
+
 
         # hit recovery invuln
         self.hit_recovery_timer = 0
@@ -120,7 +129,19 @@ class Player:
         if self.invulnerable_during_dash:
             self.hit_recovery_timer = self.dash_time
 
+    def start_launcher(self):
+        if self.attack_state != "ready" or self.heavy_state != "ready" or self.is_dashing:
+            return
+        self.launcher_state = "windup"
+        self.launcher_timer = 0.12
+        self.launcher_used = False
+
+
     def update(self, dt, keys):
+
+        if keys[pygame.K_j] and keys[pygame.K_s] and self.launcher_state == "ready":
+            self.start_launcher()
+
         # timers
         if self.hit_recovery_timer > 0:
             self.hit_recovery_timer -= dt
@@ -236,6 +257,40 @@ class Player:
             if self.heavy_timer <= 0:
                 self.heavy_state = "ready"
 
+        
+
+        if self.launcher_state == "windup":
+            self.launcher_timer -= dt
+            if self.launcher_timer <= 0:
+                self.launcher_state = "active"
+                self.launcher_timer = 0.14
+
+                w, h = 36, 48
+                x = self.pos.x + (32 * self.facing) - (w if self.facing == -1 else 0)
+                y = self.pos.y - 72
+                self.launcher_hitbox = pygame.Rect(x, y, w, h)
+
+        elif self.launcher_state == "active":
+            if self.launcher_hitbox:
+                self.launcher_hitbox.x = (
+                    self.pos.x + (32 * self.facing) - self.launcher_hitbox.width
+                    if self.facing == -1 else
+                    self.pos.x + 32
+                )
+            self.launcher_timer -= dt
+            if self.launcher_timer <= 0:
+                self.launcher_state = "recovery"
+                self.launcher_timer = 0.28
+                self.launcher_hitbox = None
+
+        elif self.launcher_state == "recovery":
+            self.launcher_timer -= dt
+            if self.launcher_timer <= 0:
+                self.launcher_state = "ready"
+
+
+
+
         # clamp horizontal speed (unless dashing)
         if abs(self.vel.x) > 400 and not self.is_dashing:
             self.vel.x = 400 * (1 if self.vel.x > 0 else -1)
@@ -248,6 +303,10 @@ class Player:
             self.on_ground = True
 
     def draw(self):
+
+        if self.launcher_hitbox:
+            pygame.draw.rect(screen, (160, 200, 255), self.launcher_hitbox, 2)
+
         # flash when in hit recovery (but avoid flashing while dashing)
         if self.hit_recovery_timer > 0 and not self.is_dashing:
             if int(self.hit_recovery_timer*10) % 2 == 0:
@@ -279,10 +338,19 @@ class Player:
 # -------------------------
 class HelmaBoss:
     def __init__(self):
+        self.shield_disabled_timer = 0.0
+        self.heavy_shield_break_time = 2.5  # seconds
+
+        self.launcher_uses = 0
+        self.max_launcher_uses = 2
+
+        self.vel = Vector2(0, 0)
+        self.on_ground = True
+
         self.pos = Vector2(700, GROUND_Y)
         self.hp = 36
-        self.half_width = 46
-        self.hurt_height = 160
+        self.half_width = int(46 * BOSS_SCALE)
+        self.hurt_height = int(160 * BOSS_SCALE)
         self.facing = -1
         self.state = "idle"   # idle, telegraph, active, recovery, stunned
         self.state_timer = 0.0
@@ -300,7 +368,7 @@ class HelmaBoss:
         self.next_action_cooldown = 0.9 + random.random()*0.6
 
         # attack params
-        self.attacks = ["slash","dash_slash","shield_bash"]
+        self.attacks = ["slash", "dash_slash", "shield_bash", "launcher"]
         self.current_attack = None
         self.telegraph_time = 0.55
         self.active_time = 0.22
@@ -323,13 +391,26 @@ class HelmaBoss:
 
     def shield_rect(self):
         # shield is a circular/rect area in front of Helma
-        w, h = 60, 120
+        w, h = int(60 * BOSS_SCALE), int(120 * BOSS_SCALE)
         if self.attack_facing == 1:
-            return pygame.Rect(self.pos.x + 10, self.pos.y - 130, w, h)
+            return pygame.Rect(self.pos.x + 10 * self.attack_facing, self.pos.y - int(130*BOSS_SCALE), w, h)
         else:
-            return pygame.Rect(self.pos.x - 10 - w, self.pos.y - 130, w, h)
+            return pygame.Rect(self.pos.x - 10*self.attack_facing - w, self.pos.y - int(130*BOSS_SCALE), w, h)
 
     def update(self, dt, player):
+        # Shield disabled by heavy
+        if self.shield_disabled_timer > 0:
+            self.shield_disabled_timer -= dt
+            self.shield_up = False
+        else:
+            # shield can behave normally again
+            pass
+
+        # gravity
+        if not self.on_ground:
+            self.vel.y += 1400 * dt
+            self.pos.y += self.vel.y * dt
+
         dist = abs(player.pos.x - self.pos.x)
         # decide facing when idle
         if self.state in ("idle","recovery"):
@@ -356,8 +437,10 @@ class HelmaBoss:
             # shield stays up, but can be forced to break by parried heavy
             pass
         else:
-            # if shield down, count down
-            if self.shield_timer > 0:
+            # shield down state
+            if self.shield_disabled_timer > 0:
+                self.shield_up = False
+            elif self.shield_timer > 0:
                 self.shield_timer -= dt
             else:
                 self.shield_up = True
@@ -374,19 +457,23 @@ class HelmaBoss:
         # picking actions
         if self.state == "idle" and self.next_action_cooldown <= 0:
             r = random.random()
-            # if player is close, heavy slash is more likely
-            if dist < 160:
-                if r < 0.55:
-                    self.start_attack("slash")
-                elif r < 0.85:
-                    self.start_attack("shield_bash")
-                else:
-                    self.start_attack("dash_slash")
-            else:
+
+            can_launcher = (
+                self.launcher_uses < self.max_launcher_uses
+                and abs(player.pos.x - self.pos.x) < 120
+                and player.on_ground
+            )
+
+            if can_launcher and r < 0.25:
+                self.start_attack("launcher")
+            elif abs(player.pos.x - self.pos.x) < 160:
                 if r < 0.6:
-                    self.start_attack("dash_slash")
-                else:
                     self.start_attack("slash")
+                else:
+                    self.start_attack("shield_bash")
+            else:
+                self.start_attack("dash_slash")
+
 
         # update telegraph/active/recovery states
         if self.state == "telegraph":
@@ -429,6 +516,12 @@ class HelmaBoss:
                 self.state = "idle"
                 self.next_action_cooldown = 0.7 + random.random()*0.6
 
+        if self.pos.y >= GROUND_Y:
+            self.pos.y = GROUND_Y
+            self.vel.y = 0
+            self.on_ground = True
+
+
     # --------------------
     def start_attack(self, kind):
         # lock facing when starting
@@ -440,8 +533,8 @@ class HelmaBoss:
         # attack-specific setup
         if kind == "slash":
             # arcing slash from up-back to down-front
-            self.slash_radius = 150
-            self.slash_tip_radius = 28
+            self.slash_radius = int(150*BOSS_SCALE)
+            self.slash_tip_radius = int(28*BOSS_SCALE)
             if self.attack_facing == 1:
                 self.slash_start_angle = -140
                 self.slash_target_angle = 40
@@ -461,6 +554,11 @@ class HelmaBoss:
         elif kind == "shield_bash":
             # shield bash: short windup, then short forward bash area
             self.attack_hitbox = None
+        elif kind == "launcher":
+            self.state = "telegraph"
+            self.state_timer = 0.35
+            self.current_attack = "launcher"
+            self.attack_hitbox = None
 
     def start_active(self):
         self.state = "active"
@@ -472,7 +570,7 @@ class HelmaBoss:
             # will check tip collisions in main loop using slash_tip_pos()
         elif self.current_attack == "dash_slash":
             # create a moving stab hitbox and move boss during the active dash
-            w, h = 60, 28
+            w, h = int(60 * BOSS_SCALE), int(28 * BOSS_SCALE)
             if self.attack_facing == 1:
                 x = self.pos.x
             else:
@@ -482,12 +580,21 @@ class HelmaBoss:
             self._dash_velocity = 520 * self.attack_facing
         elif self.current_attack == "shield_bash":
             # immediate short hitbox in front
-            w, h = 64, 34
+            w, h = int(60 * BOSS_SCALE), int(28 * BOSS_SCALE)
             if self.attack_facing == 1:
                 x = self.pos.x + 18
             else:
                 x = self.pos.x - 18 - w
             self.attack_hitbox = pygame.Rect(x, self.pos.y - 70, w, h)
+        elif self.current_attack == "launcher":
+            w, h = 48, 42
+            if self.attack_facing == 1:
+                x = self.pos.x + 24
+            else:
+                x = self.pos.x - 24 - w
+            y = self.pos.y - 64
+
+            self.attack_hitbox = pygame.Rect(x, y, w, h)
 
         # when attacking, temporarily close parry window (can't be deflected mid-swing except during explicit parry_window)
         # note: parry_window is only available during certain times and when shield_up is True
@@ -514,7 +621,7 @@ class HelmaBoss:
 
     def slash_tip_pos(self):
         # compute tip of slash arc
-        center = Vector2(self.pos.x, self.pos.y - 120)
+        center = Vector2(self.pos.x, self.pos.y - int(120 * BOSS_SCALE))
         rad = math.radians(self._slash_rotation)
         tip = Vector2(math.cos(rad) * self.slash_radius, math.sin(rad) * self.slash_radius)
         return center + tip
@@ -525,24 +632,41 @@ class HelmaBoss:
 
         # draw shield
         srect = self.shield_rect()
-        # shield base
-        pygame.draw.rect(screen, SILVER, srect)
-        # shield glow if up
-        if self.shield_up:
-            # pulse
-            a = int(80 + 80 * (0.5 + 0.5*math.sin(pygame.time.get_ticks() / 180)))
+
+        # CASE 1: Shield disabled by heavy (highest priority)
+        if self.shield_disabled_timer > 0:
+            # cracked / overheated shield
             surf = pygame.Surface((srect.width, srect.height), pygame.SRCALPHA)
-            surf.fill((200,200,220,a))
+            surf.fill((120, 80, 80, 160))
             screen.blit(surf, (srect.x, srect.y))
-            # if parry window active make it bright
+
+            # optional crack outline
+            pygame.draw.rect(screen, (200, 120, 120), srect, 2)
+
+        # CASE 2: Shield up and functional
+        elif self.shield_up:
+            # base shield
+            pygame.draw.rect(screen, SILVER, srect)
+
+            # pulse glow
+            a = int(80 + 80 * (0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 180)))
+            glow = pygame.Surface((srect.width, srect.height), pygame.SRCALPHA)
+            glow.fill((200, 200, 220, a))
+            screen.blit(glow, (srect.x, srect.y))
+
+            # parry window highlight
             if self.parry_window:
-                g = pygame.Surface((srect.width+6, srect.height+6), pygame.SRCALPHA)
-                pygame.draw.ellipse(g, (255, 220, 120, 180), (0,0,srect.width+6, srect.height+6), 6)
-                screen.blit(g, (srect.x-3, srect.y-3))
+                g = pygame.Surface((srect.width + 6, srect.height + 6), pygame.SRCALPHA)
+                pygame.draw.ellipse(
+                    g, (255, 220, 120, 180),
+                    (0, 0, srect.width + 6, srect.height + 6), 6
+                )
+                screen.blit(g, (srect.x - 3, srect.y - 3))
+
+        # CASE 3: Shield down normally (no disable, no parry)
         else:
-            # indicate shield down with darker tint
             surf = pygame.Surface((srect.width, srect.height), pygame.SRCALPHA)
-            surf.fill((80,80,90,100))
+            surf.fill((80, 80, 90, 120))
             screen.blit(surf, (srect.x, srect.y))
 
         # draw telegraphs / attacks
@@ -573,6 +697,10 @@ class HelmaBoss:
                 # draw small charge circle around shield
                 srect = self.shield_rect()
                 pygame.draw.circle(screen, color, (srect.centerx, srect.centery), 44, 3)
+            elif self.current_attack == "launcher":
+                color = ORANGE if self.state == "telegraph" else RED
+                center = (int(self.pos.x), int(self.pos.y - 90))
+                pygame.draw.circle(screen, color, center, 36, 3)
 
 # -------------------------
 # Game setup
@@ -634,7 +762,9 @@ while running:
             # simple bounce and damage to player (minor)
             if player.hit_recovery_timer <= 0:
                 player.hit_recovery_timer = 0.45
-                player.vel.x = -160 * boss.facing if player.pos.x > boss.pos.x else 160 * boss.facing
+                player.vel.x = -260 * boss.facing if player.pos.x > boss.pos.x else 260 * boss.facing
+                player.attack_state = "recovery"
+                player.attack_timer = 0.35
             # if boss is in telegraph and parry window open, the player is penalized heavily if they spam light attacks
             # (no damage to boss)
     elif hit:
@@ -655,11 +785,33 @@ while running:
             boss.hp -= 2
             # player's heavy might consume its 'damage applied' flag
             player.attack_damage_applied = True
+            boss.shield_disabled_timer = boss.heavy_shield_break_time
         elif res == "hit":
             # heavy hit normal hurtbox
             if not player.attack_damage_applied:
                 boss.hp -= 2
                 player.attack_damage_applied = True
+                boss.shield_disabled_timer = boss.heavy_shield_break_time
+
+
+    
+    if (
+        boss.current_attack == "launcher"
+        and boss.state == "active"
+        and boss.attack_hitbox
+        and boss.attack_hitbox.colliderect(player.hurtbox())
+        and player.hit_recovery_timer <= 0
+    ):
+        player.vel.y = -480
+        player.vel.x = 160 * boss.attack_facing
+        player.on_ground = False
+        player.hit_recovery_timer = 0.8
+
+        boss.launcher_uses += 1
+        player.hp -= 2   # only if used very rarely
+        boss.end_attack()
+
+
 
     # Boss attack collisions on player
     # Slash: tip overlap distance check
